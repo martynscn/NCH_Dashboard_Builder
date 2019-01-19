@@ -1,0 +1,20 @@
+# DS store
+.DS_Store
+
+# History
+.Rapp.history
+.Rhistory
+
+# RData files
+.RData
+
+# Images
+boston.gif
+iris.gif
+mtcars.gif
+
+# Unnecessary csvs
+temp_boston.csv
+test.csv
+test_cars.csv
+
