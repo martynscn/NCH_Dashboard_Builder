@@ -1,6 +1,7 @@
 library(shiny)
 library(shinyjs)
 library(V8)
+
 appCSS <- "
 #loading {
   position: fixed;
