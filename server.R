@@ -1,116 +1,48 @@
-library(DT)
-library(shiny)
-library(highcharter)
-library(magrittr)
-library(httr)
-library(jsonlite)
-library("data.table")
-library(googlesheets)
-library(tidyr)
-library(dplyr,warn.conflicts = FALSE, quietly = TRUE)
-library(formattable)
-library(knitr)
-library(shinydashboard)
-library(lubridate)
-library(readr)
-library(ggplot2)
-library(lazyeval)
-library(tidyverse)
-library(plotly)
-library(V8)
-#options(error = 999)
-appCSS <- "
-#loading {
-  position: fixed;
-left: 50%;
-top: 50%;
-z-index: 1;
-width: 150px;
-height: 150px;
-margin: -75px 0 0 -75px;
-border: 16px solid #f3f3f3;
-border-radius: 50%;
-border-top: 16px solid #3498db;
-width: 120px;
-height: 120px;
--webkit-animation: spin 2s linear infinite;
-animation: spin 2s linear infinite;
-}
-@-webkit-keyframes spin {
-0% { -webkit-transform: rotate(0deg); }
-100% { -webkit-transform: rotate(360deg); }
-}
-@keyframes spin {
-0% { transform: rotate(0deg); }
-100% { transform: rotate(360deg); }
-}
-"
+library(shinyjs)
+library(tibble)
+source("helper.R", local = TRUE)
 
-
-
-plotTheme <- function(base_size = 12) {
-  theme(
-    text = element_text( color = "black"),
-    plot.title = element_text(size = 12,colour = "black",hjust=0.5),
-    plot.subtitle = element_text(face="italic"),
-    plot.caption = element_text(hjust=0),
-    axis.ticks = element_blank(),
-    panel.background = element_blank(),
-    panel.grid.major = element_line("grey80", size = 0.1),
-    panel.grid.minor = element_blank(),
-    strip.background = element_rect(fill = "grey80", color = "white"),
-    strip.text = element_text(size=8),
-    axis.title = element_text(size=15),
-    axis.text = element_text(size=15),
-    axis.title.x = element_text(hjust=1,size=15),
-    axis.title.y = element_text(hjust=1,size=15),
-    plot.background = element_blank(),
-    legend.background = element_blank(),
-    legend.title = element_text(colour = "black", face = "bold"),
-    legend.text = element_text(colour = "black", face = "bold"),
-    axis.text.y = element_text(size=15),
-    axis.text.x = element_text(vjust=-1,angle=90,size=15))
-}
 server <- function(input, output, session) {
-  
-  
-  observeEvent(input$Update, {
+  observeEvent(
+    input$Update, {
+    # input$mydata, {
     show("app-content")
-    
-    url <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ5Zgn_CarwUu09Y_0r9Zc9TB1ZAo5Qh1UjhdnhS_h6RfNq7QolP-bA-56dX31mWG-vtK4OEENcrnQ-/pub?gid=0&single=true&output=csv"
     # url <- input$csvurl
-    csv_data <- read.csv(file = url, stringsAsFactors = FALSE, na.strings = "N/A", check.names = FALSE)
+    # csv_data <- read.csv(file = url, stringsAsFactors = FALSE, na.strings = "N/A", check.names = FALSE)
+    csv_data <- read.csv(file = "www/NCH_Training_2019 - Summary.csv", stringsAsFactors = FALSE, na.strings = "N/A", check.names = FALSE)
     # csv_data <- read.csv(text=input$mydata[[name]], stringsAsFactors = FALSE, na.strings = "N/A", check.names = FALSE)
     original_names <- names(csv_data)
     cleaned_names <- make.names(original_names)
+    resolution_names <-  cleaned_names[2:length(cleaned_names)]
+    names(resolution_names) <- original_names[2:length(original_names)]
     csv_data_list <- lapply(1:ncol(csv_data), function(x) {
       if(x == 1) {csv_data[,x]
       } else {as.numeric(csv_data[,x])}})
- 
-    csv_data_df <- reactive({
-       names_lookup_table <- data.frame(original_names = original_names, cleaned_names = cleaned_names)
- 
-      csv_data_df <- as.data.frame(x = csv_data_list,row.names = NULL, stringsAsFactors = FALSE,
+    names_lookup_table <- data.frame(original_names = original_names, cleaned_names = cleaned_names)
+    csv_data_df <- as.data.frame(x = csv_data_list,row.names = NULL, stringsAsFactors = FALSE,
                                    col.names = cleaned_names)
-    })
-    
-    
+
     output$state_output <- renderUI({
-      selectInput('state',label="Select state",choices=csv_data_df()$States,selected = csv_data_df()$States[1])
+      selectInput('state',label="Select state",choices=csv_data_df$States,selected = csv_data_df$States[1])
     })
     output$resolutions_output <- renderUI({
-      resolution_names <-  cleaned_names[2:length(cleaned_names)]
-      names(resolution_names) <- original_names[2:length(original_names)]
-      selectInput('resolutions',label="Select resolutions",choices=resolution_names)
+      selectInput('resolutions',label="Select resolution",choices=resolution_names)
     })
-    
-    bar_data <- reactive({
+    output$map_resolution_output <- renderUI({
+      selectInput("map_resolution","Select resolution",choices=resolution_names)
+    })
+    bar_data_per_resolution <- reactive({
       names_lookup_table <- data.frame(original_names = original_names, cleaned_names = cleaned_names)
       csv_data_df <- as.data.frame(x = csv_data_list,row.names = NULL, stringsAsFactors = FALSE,col.names = cleaned_names)
       resolution_symbol <- rlang::sym(input$resolutions)
       firstCol <- names(csv_data_df)[1]
       dt <- csv_data_df[,c(firstCol,input$resolutions)]
-      dt <- arrange(dt, desc(!!resolution_symbol))
+      if(input$sortData == "Descending") {
+        dt <- arrange(dt, desc(!!resolution_symbol))
+      } else if(input$sortData == "Ascending") {
+        dt <- arrange(dt, !!resolution_symbol)
+      }
+      dt
     })
     names_lookup_table <- reactive({
       names_lookup_table <- data.frame(original_names = original_names, cleaned_names = cleaned_names)
@@ -118,22 +50,28 @@ server <- function(input, output, session) {
     # Define bar_data_per_state ----
     bar_data_per_state <- reactive({
       state_symbol <- rlang::sym(input$state)
-      dt <- as.vector(csv_data_df()[csv_data_df()[1] == input$state,c(2:ncol(csv_data_df()))])
-      df <- data.frame(Resolution = names(csv_data_df())[2:ncol(csv_data_df())],StateValue = as.numeric(dt))
+      dt <- as.vector(csv_data_df[csv_data_df[1] == input$state,c(2:ncol(csv_data_df))])
+      df <- data.frame(Resolution = names(csv_data_df)[2:ncol(csv_data_df)],StateValue = as.numeric(dt))
       df_joined <- left_join(x = df, y = names_lookup_table(), by = c("Resolution" = "cleaned_names"))
       df_joined_mutated <- mutate(df_joined, Resolution_Abbr = paste("Resolution ", 1:nrow(df_joined)))
-      arranged_df <- arrange(df_joined_mutated, desc(StateValue))
+      dt <- df_joined_mutated
+      if(input$sortData == "Descending") {
+        dt <- arrange(dt, desc(StateValue))
+      } else if(input$sortData == "Ascending") {
+        dt <- arrange(dt, StateValue)
+      }
+      dt
     })
     # Resolution bar chart ----
     output$bar_chart_per_resolution <- renderHighchart({
       i <- which(names_lookup_table()[,2] == input$resolutions)
       resolution_full_name <- names_lookup_table()[i,1]
-      series1 <- bar_data()[,2] * 100
+      series1 <- bar_data_per_resolution()[,2] * 100
       series_name <- paste("Resolution", i-1, sep = " ")
       h <- highchart() %>% 
         hc_chart(type = "column") %>% 
         hc_title(text = resolution_full_name) %>% 
-        hc_xAxis(categories = bar_data()[,1]) %>% 
+        hc_xAxis(categories = bar_data_per_resolution()[,1]) %>% 
         hc_add_series(data = series1,
                       name = series_name) %>% 
         hc_yAxis(title = list(text = "% completion"),
@@ -158,7 +96,6 @@ server <- function(input, output, session) {
         hc_tooltip(useHTML = FALSE, pointFormat = "Completion rate of {point.y}%") 
     })
     observeEvent(input$refresh, {
-      
       show(id="loading", anim = TRUE, animType = "fade")
       Sys.sleep(1.5)
       
@@ -167,8 +104,8 @@ server <- function(input, output, session) {
     })
     output$plots_first_row <- renderUI({
       fluidRow(
-               highchartOutput("bar_chart_per_state"),
-               highchartOutput("bar_chart_per_resolution"),
+               # highchartOutput("bar_chart_per_state"),
+               # highchartOutput("bar_chart_per_resolution"),
          HTML('<button onclick="topFunction()" id="myBtn" title="Go to top">Go Back To The Top</button>')
         
       )
@@ -176,5 +113,93 @@ server <- function(input, output, session) {
     for (name in names(input$mydata)) {
       output[[name]] <- renderTable(head(read.csv(text=input$mydata[[name]]),4))
     }
+    #Theme Expression ----
+    themeExpr <- reactive({
+      switch(input$theme,
+             null = hc_theme_null(),
+             darkunica = hc_theme_darkunica(),
+             gridlight = hc_theme_gridlight(),
+             sandsignika = hc_theme_sandsignika(),
+             fivethirtyeight = hc_theme_538(),
+             economist = hc_theme_economist(),
+             chalk = hc_theme_chalk(),
+             handdrwran = hc_theme_handdrawn()
+      )
+    })
+    
+    # Map logic ----
+    output$res_map <- renderHighchart({
+      NigeriaStates <- data.frame(code = c("Abia", "Adamawa", 
+                                           "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno", 
+                                           "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "Federal Capital Territory", 
+                                           "Gombe", "Imo", "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", 
+                                           "Kogi", "Kwara", "Lagos", "Nassarawa", "Niger", "Ogun", "Ondo", 
+                                           "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", 
+                                           "Zamfara"), MNHStateNames = c('Abia','Adamawa','Akwa Ibom','Anambra','Bauchi','Bayelsa','Benue','Borno','Cross River','Delta','Ebonyi','Edo','Ekiti','Enugu','FCT','Gombe','Imo','Jigawa','Kaduna','Kano','Katsina','Kebbi','Kogi','Kwara','Lagos','Nasarawa','Niger','Ogun','Ondo','Osun','Oyo','Plateau','Rivers','Sokoto','Taraba','Yobe','Zamfara'))
+      df <- csv_data_df
+      my_map_data <- left_join(x = NigeriaStates, y = df, by = c("MNHStateNames" = "States"),copy = TRUE)
+      res <- input$map_resolution
+      filtered_map_data <- my_map_data[!is.na(my_map_data[,res]),c("code",res)]
+      hc <- hcmap("countries/ng/ng-all",download_map_data = FALSE, data = filtered_map_data, value = res,
+                  joinBy = c("woe-name", "code"), name = res,
+                  dataLabels = list(enabled = TRUE, format = "{point.name}"),
+                  borderColor = "#FAFAFA", borderWidth = 0.1,
+                  tooltip = list(valueDecimals = 2, valuePrefix = "",
+                                 valueSuffix = ""))
+      hc
+    })
+    # summary formattable logic ----
+    output$summaryTable <- formattable::renderFormattable({
+      csv_data_interval <- sapply(csv_data_df[2:ncol(csv_data_df)], function(x) {
+        cut(x, breaks = c(-Inf,0.01,0.25,0.50,0.75,0.99,Inf),
+            labels = c("No action taken","Slow progress","Moderate progress","Significant progress","Near completion","Completed"))
+      })
+      csv_data_int_df <- as.data.frame(csv_data_interval)
+      csv_data_int_df <- add_column(csv_data_int_df,States = csv_data_df$States, .before = 1)
+      names(csv_data_int_df)[2:ncol(csv_data_int_df)] <- paste0("R",c(1:(ncol(csv_data_int_df)-1)))
+      library(formattable)
+      
+      formatted_table <- 
+        formattable(x = csv_data_int_df
+                    ,
+                    formatters =
+                      list(
+                        States =
+                          formatter(
+                            .tag = "span",
+                            style = x ~ ifelse(test = 
+                              x == "FCT", yes = formattable::style(color = "green", font.weight = "bold"),no = NA)
+                          ),
+                          area(col = 2:ncol(csv_data_int_df)) ~ formatter(
+                          "div",
+                            # "span",
+                          style = x ~
+                            ifelse(
+                              is.na(x),
+                              formattable::style(color = "black", font.weight = "bold",border = "1px","border-radius" = "4px", background = "#e5e8e8"),
+                              ifelse(
+                              x == "Near completion",
+                              formattable::style(color = "white", font.weight = "bold",border = "1px","border-radius" = "4px", background = "#6aa84f"),
+                              ifelse(
+                                x == "No action taken",
+                                formattable::style(color = "black", font.weight = "bold",border = "1px", background = "#e94443"),
+                                ifelse(
+                                  x == "Slow progress",
+                                  formattable::style(color = "black", font.weight = 5,border = "1px", background = "#bf9000"),
+                                  ifelse(
+                                    x == "Moderate progress",
+                                    formattable::style(color = "black", font.weight = 5,border = "1px", background = "#fef83f"),
+                                    ifelse(
+                                      x == "Significant progress",
+                                      formattable::style(color = "black", font.weight = 2,background = "#a3ea16","padding-right" = "2px"), #"background-color" = "gray" can also work
+                                      ifelse(
+                                        x == "Completed",
+                                        formattable::style(color = "white", font.weight = "bold",background = "#274e13", font.size = 2)
+                                        ,NA
+                                        # ,x ~ icontext("")
+                                      )))))))
+                        ))
+                    ,align = c("c","c","c"))
+    })
   })
 }
