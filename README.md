@@ -1,4 +1,2 @@
-# Data-Summariser
-A dashboard developed with R-shiny that acts as a plug and play dashboard and supports drag and drop which can be very useful in many use cases for the Nigerian Federal Ministry of Health.
-* Javascript allows for data drag and drop and data refresh.
-* A little bit of CSS was used to style the dashboard.
+# NCH Dashboard Builder
+This is a dashboard template I developed with R-shiny that acts as a plug and play dashboard and supports drag and drop which can be very useful in many use cases for the Nigerian Federal Ministry of Health during their National Council on Health meetings. This speeds up the time needed for the development of dashboards for different NCH sessions. To use this dashboard template, simply download the repository, host it on a server running R and load your data.
